@@ -1,0 +1,51 @@
+#!/usr/bin/perl
+
+use JSON;
+use LWP::UserAgent;
+use Sys::Hostname;
+use Data::Dumper;
+use Getopt::Long;
+use YAML::Syck;
+
+
+my $port = 50070;
+my $host = hostname;
+my $timeout = 30;
+my $cluster ; 
+my $help;
+
+my $opt_res = GetOptions (
+  'host|h=s' => \$host,
+  'port|p=s' => \$port,
+  'cluster|c=s' => \$cluster,
+  'help|?' => \$help,
+);
+
+sub usage {
+  print "usage: get_dead [-h fqdn] [-p port] [ -c cluster ]\n";
+}
+
+if ( $help or not $opt_res ) {
+  usage();
+  exit;
+}
+
+if ( $cluster ) { 
+  my ($grid, $color) = split(/\./, $cluster );
+  $host = $grid . $color . "-nn1.$color.ygrid.yahoo.com";
+}
+
+my $ua = LWP::UserAgent->new(timeout => $timeout) ;
+my $url = "http://$host:$port" .
+          '/jmx?qry=Hadoop:service=NameNode,name=NameNodeInfo';
+my $resp = $ua->get($url);
+
+if ( $resp->is_error ) {
+  print "error: " . $resp->status_line . "\n";
+  exit 2 ;
+}
+
+my $jmx = from_json($resp->decoded_content(), {'convert_blessed' => 1});
+my $dead_nodes = from_json( $jmx->{beans}[0]->{DeadNodes}, {pretty=>1} ) ;
+print join("\n",keys(%{$dead_nodes})) . "\n";
+
